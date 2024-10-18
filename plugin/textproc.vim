@@ -450,14 +450,29 @@ function! s:run_in_split(name, args, lnum, count, debug) abort
 		echohl None
 		return 0
 	endif
+    
+	if type(scripts[a:name]) == v:t_string
+        let script_type = 'file'
+	elseif type(scripts[a:name]) == v:t_func
+        let script_type = 'func'
+	elseif type(scripts[a:name]) == v:t_dict
+        let script_type = scripts[a:name]['type']
+    endif
+
 	let bid = bufnr('%')
 	let input = getbufline(bid, a:lnum, a:lnum + a:count - 1)
-	if type(scripts[a:name]) == v:t_string
-		let script = scripts[a:name]
-		let runner = s:script_runner(script)
-		let runner = (runner != '')? (runner . ' ') : ''
-		let runner = (runner != '' || s:windows == 0)? runner : 'call '
-		let cmd = runner . shellescape(script)
+	if ( script_type == 'file' ) || ( script_type == 'inline_script' )
+        if script_type == 'file'
+            let script = scripts[a:name]
+            let runner = s:script_runner(script)
+            let runner = (runner != '')? (runner . ' ') : ''
+            let runner = (runner != '' || s:windows == 0)? runner : 'call '
+            let cmd = runner . shellescape(script)
+        else " type == inline_script
+            let script = scripts[a:name]
+            let cmd = script['cmd']
+        endif
+
 		if a:args != ''
 			let cmd = cmd . ' ' . (a:args)
 		endif
@@ -468,15 +483,19 @@ function! s:run_in_split(name, args, lnum, count, debug) abort
 		let $VIM_FILENAME = expand('%:t')
 		let $VIM_FILEDIR = expand('%:p:h')
 		let $VIM_CWD = getcwd()
-		let $VIM_SCRIPT = script
+
+        if script_type == 'file'
+            let $VIM_SCRIPT = script
+            let $VIM_SCRIPTDIR = fnamemodify(script, ':p:h')
+        endif
+
 		let $VIM_SCRIPTNAME = a:name
-		let $VIM_SCRIPTDIR = fnamemodify(script, ':p:h')
 		let $VIM_FILETYPE = &ft
 		let $VIM_LINE1 = printf('%d', line1)
 		let $VIM_LINE2 = printf('%d', line2)
 		let text = system(cmd, input)
 		let output = split(text, '\n', 1)
-	elseif type(scripts[a:name]) == v:t_func
+	elseif script_type == 'func'
 		let output = call(scripts[a:name], [input])
 	endif
 	let bid = get(t:, '_textproc_buffer', -1)
