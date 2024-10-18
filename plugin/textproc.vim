@@ -182,6 +182,16 @@ function! s:script_list() abort
 			let methods[key] = g:textproc[key]
 		endfor
 	endif
+
+	if exists('g:textproc_inline_script')
+		for key in keys(g:textproc_inline_script)
+			let select[key] = {
+                        \ 'type': 'inline_script',
+                        \ 'cmd': g:textproc_inline_script[key],
+                        \}
+		endfor
+
+	endif
 	if exists('b:textproc')
 		for key in keys(b:textproc)
 			let methods[key] = b:textproc[key]
@@ -360,15 +370,30 @@ function! s:script_run(name, args, lnum, count, debug) abort
 		echohl None
 		return 0
 	endif
+
 	if type(scripts[a:name]) == v:t_string
-		let script = scripts[a:name]
-		let runner = s:script_runner(script)
-		let runner = (runner != '')? (runner . ' ') : ''
-		let runner = (runner != '' || s:windows == 0)? runner : 'call '
-		let cmd = runner . shellescape(script)
-		if a:args != ''
-			let cmd = cmd . ' ' . (a:args)
-		endif
+        let script_type = 'file'
+	elseif type(scripts[a:name]) == v:t_func
+        let script_type = 'func'
+	elseif type(scripts[a:name]) == v:t_dict
+        let script_type = scripts[a:name]['type']
+    endif
+
+	if ( script_type == 'file' ) || ( script_type == 'inline_script' )
+        if script_type == 'file'
+            let script = scripts[a:name]
+            let runner = s:script_runner(script)
+            let runner = (runner != '')? (runner . ' ') : ''
+            let runner = (runner != '' || s:windows == 0)? runner : 'call '
+            let cmd = runner . shellescape(script)
+        else " type == inline_script
+            let script = scripts[a:name]
+            let cmd = script['cmd']
+        endif
+
+        if a:args != ''
+            let cmd = cmd . ' ' . (a:args)
+        endif
 		let line1 = a:lnum
 		let line2 = line1 + a:count - 1
 		let cmd = printf('%s,%s!%s', line1, line2, cmd)
@@ -377,14 +402,18 @@ function! s:script_run(name, args, lnum, count, debug) abort
 		let $VIM_FILENAME = expand('%:t')
 		let $VIM_FILEDIR = expand('%:p:h')
 		let $VIM_CWD = getcwd()
-		let $VIM_SCRIPT = script
+
+        if script_type == 'file'
+            let $VIM_SCRIPT = script
+            let $VIM_SCRIPTDIR = fnamemodify(script, ':p:h')
+        endif
+
 		let $VIM_SCRIPTNAME = a:name
-		let $VIM_SCRIPTDIR = fnamemodify(script, ':p:h')
 		let $VIM_FILETYPE = &ft
 		let $VIM_LINE1 = printf('%d', line1)
 		let $VIM_LINE2 = printf('%d', line2)
 		execute cmd
-	elseif type(scripts[a:name]) == v:t_func
+	elseif script_type == 'func'
 		let bid = bufnr('%')
 		let text = getbufline(bid, a:lnum, a:lnum + a:count - 1)
 		let hr = call(scripts[a:name], [text])
